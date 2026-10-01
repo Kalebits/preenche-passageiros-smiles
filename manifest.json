@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Preenche Passageiros",
+  "version": "0.1",
+  "description": "Lê fotos de passaporte, RG e CNH (ou o texto que você colar) e preenche os dados dos passageiros no site da Smiles.",
+  "permissions": ["storage"],
+  "host_permissions": ["https://*.smiles.com.br/*", "https://generativelanguage.googleapis.com/*"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    { "matches": ["https://*.smiles.com.br/*"], "js": ["nomes.js", "painel.js"], "run_at": "document_idle" }
+  ],
+  "options_page": "opcoes.html",
+  "action": { "default_title": "Preenche Passageiros" }
+}
