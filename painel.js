@@ -45,6 +45,18 @@
     const primeiro = (nome || "").split(/\s+/)[0].normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
     return globalThis.NOMES_MASCULINOS?.has(primeiro) ? "Masculino" : globalThis.NOMES_FEMININOS?.has(primeiro) ? "Feminino" : "";
   }
+  // Separa data e CPF de dentro de um pedaço ("Nome: 02/02/2019", "CPF 080.330.762-40"): cada valor vira um pedaço
+  // próprio e o rótulo que estava junto ("CPF", "Nascimento") some. Pedaço sem valor (um nome) fica como está.
+  function pedacos(parte) {
+    const achados = [];
+    let resto = parte
+      .replace(/(?<!\d)\d{1,2}[/.-]\d{1,2}[/.-]\d{4}(?!\d)/g, (m) => { achados.push(m); return " "; })
+      .replace(/(?<!\d)\d{3}[.\s]?\d{3}[.\s]?\d{3}[-\s]?\d{2}(?!\d)/g, (m) => { achados.push(m.replace(/\D/g, "")); return " "; });
+    if (achados.length) resto = resto.replace(/\b(data de nascimento|nascimento|nasc|cpf|documento|doc)\b\.?\s*[:=-]?/gi, " ");
+    resto = resto.replace(/\s*[:=-]\s*$/, "").replace(/\s+/g, " ").trim();
+    return [...(resto ? [resto] : []), ...achados];
+  }
+
   function lerTextoLocal(texto) {
     const linhas = texto.trim().split(/\n/).map((l) => l.trim());
     // Cada linha com nome + documento é um passageiro; senão os blocos separados por linha em branco são.
@@ -53,7 +65,7 @@
     const contato = {};
     const lista = blocos.map((bloco) => {
       const p = {};
-      for (const parte of bloco.split(/[\n,;]+/).map((x) => x.replace(/^\s*[A-Za-zÀ-ÿ ]{2,20}\s*[:=-]\s*/, (m) => /cpf|nasc|tel|cel|fone|e-?mail|passaporte|nome/i.test(m) ? "" : m).trim()).filter(Boolean)) {
+      for (const parte of bloco.split(/[\n,;]+/).flatMap(pedacos).map((x) => x.replace(/^\s*[A-Za-zÀ-ÿ ]{2,20}\s*[:=-]\s*/, (m) => /cpf|nasc|tel|cel|fone|e-?mail|passaporte|nome/i.test(m) ? "" : m).trim()).filter(Boolean)) {
         const dig = parte.replace(/\D/g, "");
         if (/@/.test(parte)) p.email = parte.match(/[\w.+-]+@[\w-]+(\.[\w-]+)+/)?.[0] || "";
         else if (/^\d{1,2}[/.-]\d{1,2}[/.-]\d{4}$/.test(parte)) p.nascimento = parte.replace(/[.-]/g, "/").replace(/^(\d)\//, "0$1/").replace(/\/(\d)\//, "/0$1/");
