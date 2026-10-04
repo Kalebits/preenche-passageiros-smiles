@@ -60,7 +60,9 @@
   function lerTextoLocal(texto) {
     const linhas = texto.trim().split(/\n/).map((l) => l.trim());
     // Cada linha com nome + documento é um passageiro; senão os blocos separados por linha em branco são.
-    const porLinha = linhas.filter(Boolean).every((l) => /[A-Za-zÀ-ÿ]/.test(l) && /\d{11}|\d{3}\.\d{3}\.\d{3}-\d{2}/.test(l));
+    const ehContato = (l) => /@/.test(l) || (/^\D*(\d\D*){10,13}$/.test(l) && !/[A-Za-zÀ-ÿ]{4}/.test(l.replace(/^\s*[A-Za-zÀ-ÿ-]+\s*[:=-]?/, "")) && !/\d{1,2}[/.-]\d{1,2}[/.-]\d{4}/.test(l));
+    const pessoas = linhas.filter(Boolean).filter((l) => !ehContato(l));
+    const porLinha = pessoas.length > 0 && pessoas.every((l) => /[A-Za-zÀ-ÿ]/.test(l) && /\d{11}|\d{3}\.\d{3}\.\d{3}-\d{2}/.test(l));
     const blocos = porLinha ? linhas.filter(Boolean) : texto.trim().split(/\n\s*\n/);
     const contato = {};
     const lista = blocos.map((bloco) => {
@@ -78,7 +80,7 @@
         }
       }
       // Bloco sem nome = só contato (e-mail/telefone de todos); ali um número de 11 dígitos é celular, não CPF.
-      if (!p.nome) { Object.assign(contato, { email: p.email, telefone: p.telefone || p.cpf }); return null; }
+      if (!p.nome) { Object.assign(contato, { email: p.email || contato.email, telefone: p.telefone || p.cpf || contato.telefone }); return null; }
       return p;
     }).filter(Boolean);
     if (!lista.length || lista.some((p) => !p.nome || !p.nascimento || !(p.cpf || p.passaporte))) return null;
@@ -311,7 +313,21 @@
     ["cpf", "CPF"], ["passaporte", "Passaporte"], ["passaporte_validade", "Vencimento passaporte"],
     ["passaporte_pais", "País emissor"], ["email", "E-mail"], ["telefone", "Telefone"]];
 
-  function cartaoPax(p, i) {
+  // Um lugar por passageiro: o primeiro cartão LIVRE do tipo dele (adulto/criança/bebê pela idade), na ordem do
+  // texto. Sem lugar do tipo, o primeiro livre (aí o "Preencher" recusa e avisa que o tipo não bate).
+  function sugerirLugares(lista) {
+    const cs = cartoes(), usados = new Set();
+    return lista.map((p, i) => {
+      const tipo = tipoPelaIdade(p.nascimento) || "Adulto";
+      let k = cs.findIndex((c, j) => !usados.has(j) && tipoDoCartao(c) === tipo);
+      if (k < 0) k = cs.findIndex((c, j) => !usados.has(j));
+      if (k < 0) return Math.min(i + 1, Math.max(cs.length, 1));
+      usados.add(k);
+      return k + 1;
+    });
+  }
+
+  function cartaoPax(p, i, lugar) {
     const caixa = document.createElement("div");
     caixa.className = "pax";
     const genero = !p.sexo ? `<div class="erro">Gênero desconhecido: não deu para saber pelo nome. Escreva Masculino ou Feminino.</div>`
@@ -330,10 +346,7 @@
     const lista = cartoes();
     lista.forEach((c, k) => sel.append(new Option(`${k + 1} · ${tipoDoCartao(c)}`, k + 1)));
     if (!lista.length) sel.append(new Option("1", 1));
-    // Sugere o primeiro lugar do mesmo tipo (adulto/criança/bebê) a partir da posição do passageiro.
-    const tipo = tipoPelaIdade(p.nascimento);
-    const livre = lista.findIndex((c, k) => k >= i && (!tipo || tipoDoCartao(c) === tipo));
-    sel.value = String(livre >= 0 ? livre + 1 : Math.min(i + 1, Math.max(lista.length, 1)));
+    sel.value = String(lugar || Math.min(i + 1, Math.max(lista.length, 1)));
     // Preenche e confirma este passageiro; devolve true só se ficou tudo certo (o "Preencher todos" para no primeiro false).
     caixa.executar = async () => {
       const dados = Object.fromEntries([...caixa.querySelectorAll("input")].map((x) => [x.dataset.k, x.value.trim()]));
@@ -389,7 +402,13 @@
       if (!lista.length) return saida.replaceChildren(aviso("erro", "Não achei passageiros nos dados."));
       const todos = document.createElement("button");
       todos.className = "acao"; todos.textContent = `Preencher todos (${lista.length}) e confirmar um por um`;
-      const caixas = lista.map(cartaoPax);
+      // Um único e-mail/celular entre os passageiros já aparece em todos (também na leitura por foto).
+      for (const k of ["email", "telefone"]) {
+        const valores = [...new Set(lista.map((p) => (p[k] || "").trim()).filter(Boolean))];
+        if (valores.length === 1) lista.forEach((p) => { if (!(p[k] || "").trim()) p[k] = valores[0]; });
+      }
+      const lugares = sugerirLugares(lista);
+      const caixas = lista.map((p, i) => cartaoPax(p, i, lugares[i]));
       // Um viajante de cada vez; para no primeiro problema. No fim para: "Ir para pagamento" é sempre você.
       todos.onclick = async () => {
         todos.disabled = true;
