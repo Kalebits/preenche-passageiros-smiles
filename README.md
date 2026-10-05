@@ -49,9 +49,9 @@ Na tela "Dados dos viajantes" aparece um botão laranja, **Passageiros**, no can
 extensão: você cola o texto ou as fotos e clica em **Ler dados**. Cada passageiro aparece num cartão para conferir,
 com aviso amarelo no que vale olhar duas vezes e vermelho no que está faltando.
 
-Depois, **Preencher todos** vai de viajante em viajante: abre o "Informar viajante", preenche e clica em
-**Concluir e continuar**, mas só quando tudo entrou e o site não reclamou de nada. No primeiro problema ela para e
-mostra o que falta. Quando acaba o último viajante, ela para também.
+Depois, **Preencher todos** preenche todos os "Informar viajante", um depois do outro, mesmo que algum dê problema.
+Só no fim ela clica em **Concluir e continuar**, e só nos viajantes em que tudo entrou e o site não reclamou de nada.
+Os que ficaram com aviso vermelho você confere e confirma à mão. Quando termina, ela para.
 
 **Ir para pagamento** ela nunca clica. Conferir a reserva inteira e pagar é sempre com você.
 

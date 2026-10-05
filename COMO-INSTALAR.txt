@@ -65,8 +65,9 @@ COMO USAR NA SMILES
 3. Cole o texto ou as fotos dos documentos e clique em "Ler dados".
 4. Confira os campos de cada passageiro (avisos amarelos = conferir;
    vermelhos = falta algo).
-5. Clique em "Preencher todos": a extensão preenche e confirma um viajante por vez
-   ("Concluir e continuar") e para no primeiro problema.
+5. Clique em "Preencher todos": a extensão preenche TODOS os viajantes, mesmo que algum
+   dê problema, e só no fim confirma ("Concluir e continuar") os que ficaram sem problema.
+   Os que ficarem com aviso vermelho, confira e confirme você.
 6. No fim, confira tudo e clique em "Ir para pagamento" VOCÊ MESMO.
    A extensão nunca faz o pagamento.
 

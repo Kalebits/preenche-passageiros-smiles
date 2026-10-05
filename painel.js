@@ -167,8 +167,22 @@
     return ["Passaporte", passaporte];
   }
 
-  async function preencher(n, p, internacional) {
-    const cartao = cartoes()[n - 1];
+  // Confirmar ("Concluir e continuar") faz a Smiles renumerar os cartões que faltam: por isso o cartão vem como
+  // elemento guardado ANTES de qualquer confirmação, nunca procurado de novo pelo número.
+  // Clica em "Concluir e continuar" do cartão (só ele; nunca "Ir para pagamento").
+  async function confirmarCartao(cartao) {
+    const concluir = [...cartao.querySelectorAll("button")].find((b) => /^\s*Concluir e continuar\s*$/i.test(b.innerText));
+    if (!concluir || concluir.disabled) {
+      anotar(`    Concluir e continuar: ${concluir ? "botão desabilitado" : "botão não achado"}`);
+      return false;
+    }
+    concluir.click();
+    await esperar(600);
+    anotar("    Concluir e continuar: CLICADO");
+    return true;
+  }
+
+  async function preencher(cartao, n, p, internacional, { confirmar = true } = {}) {
     if (!cartao) throw new Error(`Não achei o cartão "Informar viajante ${n}" nesta página.`);
     await expandir(cartao);
     const falhas = [];
@@ -217,10 +231,8 @@
     doSite.forEach((e) => anotar(`    ERRO DO SITE: ${e.slice(0, 160)}`));
     falhas.push(...doSite);
     // Só confirma o viajante se nada faltou e o site não reclamou de nada.
-    const concluir = [...cartao.querySelectorAll("button")].find((b) => /^\s*Concluir e continuar\s*$/i.test(b.innerText));
-    const confirmou = !falhas.length && concluir && !concluir.disabled;
-    if (confirmou) { concluir.click(); await esperar(500); }
-    anotar(`    Concluir e continuar: ${confirmou ? "CLICADO" : !concluir ? "botão não achado" : falhas.length ? "não clicado (há falhas)" : "botão desabilitado"}`);
+    const confirmou = confirmar && !falhas.length && await confirmarCartao(cartao);
+    if (falhas.length) anotar("    Concluir e continuar: não clicado (há falhas)");
     cartao.scrollIntoView({ behavior: "smooth", block: "start" });
     return { falhas, confirmou };
   }
@@ -348,7 +360,8 @@
     if (!lista.length) sel.append(new Option("1", 1));
     sel.value = String(lugar || Math.min(i + 1, Math.max(lista.length, 1)));
     // Preenche e confirma este passageiro; devolve true só se ficou tudo certo (o "Preencher todos" para no primeiro false).
-    caixa.executar = async () => {
+    // opcoes.cartoes: lista guardada no começo do "Preencher todos"; opcoes.confirmar: false = só preenche.
+    caixa.executar = async ({ cartoes: guardados = cartoes(), confirmar = true } = {}) => {
       const dados = Object.fromEntries([...caixa.querySelectorAll("input")].map((x) => [x.dataset.k, x.value.trim()]));
       dados.sexo_origem = dados.sexo === (p.sexo || "") ? p.sexo_origem : "digitado"; // de onde veio o gênero (para o registro)
       // Um único e-mail (ou celular) entre todos os passageiros vale para quem veio sem.
@@ -360,7 +373,7 @@
         }
       }
       const res = caixa.querySelector(".res");
-      const recusa = (texto) => { anotar(`  RECUSADO: ${texto}`); res.replaceChildren(aviso("erro", texto)); return false; };
+      const recusa = (texto) => { anotar(`  RECUSADO: ${texto}`); res.replaceChildren(aviso("erro", texto)); return { ok: false, problema: texto }; };
       anotar(`Passageiro ${i + 1} -> viajante ${sel.value}; veio: ${["nome", "sobrenome", "nascimento", "cpf", "passaporte", "email", "telefone"]
         .map((k) => `${k} ${tem(dados[k])}`).join(", ")}; passaporte_validade ${tem(dados.passaporte_validade)}; ` +
         `país "${dados.passaporte_pais || ""}"; sexo "${dados.sexo || ""}"`);
@@ -368,17 +381,18 @@
       if (!internacional() && digitos(dados.cpf).length !== 11 && !dados.passaporte) {
         return recusa("Sem documento: mande o CPF (nacional) ou o passaporte.");
       }
-      const cartao = cartoes()[Number(sel.value) - 1];
+      const cartao = guardados[Number(sel.value) - 1];
       const tipo = tipoPelaIdade(dados.nascimento);
       if (cartao && tipo && tipo !== tipoDoCartao(cartao)) {
         return recusa(`Pela data de nascimento esta pessoa é ${tipo}, mas o viajante ${sel.value} é lugar de ${tipoDoCartao(cartao)}. Escolha outro viajante.`);
       }
       try {
-        const { falhas, confirmou } = await preencher(Number(sel.value), dados, internacional());
+        const { falhas, confirmou } = await preencher(cartao, Number(sel.value), dados, internacional(), { confirmar });
         if (falhas.length) return recusa(`Preenchi, mas NÃO confirmei. Confira: ${falhas.join(" · ")}`);
-        res.replaceChildren(aviso("ok", confirmou ? `Viajante ${sel.value} preenchido e confirmado ("Concluir e continuar").`
-          : `Viajante ${sel.value} preenchido, mas não achei o "Concluir e continuar": clique você.`));
-        return confirmou;
+        res.replaceChildren(aviso("ok", !confirmar ? `Viajante ${sel.value} preenchido.`
+          : confirmou ? `Viajante ${sel.value} preenchido e confirmado ("Concluir e continuar").`
+            : `Viajante ${sel.value} preenchido, mas não achei o "Concluir e continuar": clique você.`));
+        return { ok: true, cartao, confirmou };
       } catch (e) {
         anotar(`  EXCEÇÃO: ${e.message} | ${(e.stack || "").split("\n").slice(1, 3).join(" ").trim()}`);
         return recusa(e.message);
@@ -401,7 +415,7 @@
       const lista = r?.passageiros || [];
       if (!lista.length) return saida.replaceChildren(aviso("erro", "Não achei passageiros nos dados."));
       const todos = document.createElement("button");
-      todos.className = "acao"; todos.textContent = `Preencher todos (${lista.length}) e confirmar um por um`;
+      todos.className = "acao"; todos.textContent = `Preencher todos (${lista.length}) e confirmar no fim`;
       // Um único e-mail/celular entre os passageiros já aparece em todos (também na leitura por foto).
       for (const k of ["email", "telefone"]) {
         const valores = [...new Set(lista.map((p) => (p[k] || "").trim()).filter(Boolean))];
@@ -409,7 +423,7 @@
       }
       const lugares = sugerirLugares(lista);
       const caixas = lista.map((p, i) => cartaoPax(p, i, lugares[i]));
-      // Um viajante de cada vez; para no primeiro problema. No fim para: "Ir para pagamento" é sempre você.
+      // Preenche todos, mesmo com erro em algum; no fim confirma os sem problema. "Ir para pagamento" é sempre você.
       todos.onclick = async () => {
         todos.disabled = true;
         diario = [];
@@ -418,15 +432,28 @@
         anotar(`Página: ${location.pathname} | Navegador: ${navigator.userAgent}`);
         anotar(`Voo: ${internacional() ? "internacional" : "nacional"} | passageiros lidos: ${caixas.length} | ` +
           `cartões na página: ${lista.length} (${lista.map((c, k) => `${k + 1}:${tipoDoCartao(c)}`).join(" ")})`);
-        let feitos = 0;
+        // 1) Preenche todos, sem confirmar e sem parar por erro (confirmar no meio renumeraria os cartões).
+        const resultados = [];
         for (const c of caixas) {
           c.scrollIntoView({ block: "nearest" });
-          if (!(await c.executar())) break;
-          feitos++;
-          await esperar(800);
+          resultados.push({ c, r: await c.executar({ cartoes: lista, confirmar: false }) });
+          await esperar(300);
         }
-        anotar(feitos === caixas.length ? `FIM: ${feitos} viajante(s) confirmados. Parei antes do pagamento.`
-          : `PAROU no passageiro ${feitos + 1} (${feitos} confirmados antes).`);
+        // 2) Confirma os que ficaram sem problema, do último para o primeiro: assim a renumeração da Smiles não
+        //    mexe nos que ainda faltam.
+        anotar("Confirmando os viajantes sem problema, do último para o primeiro:");
+        let confirmados = 0;
+        for (const { c, r } of [...resultados].reverse()) {
+          if (!r.ok) continue;
+          if (await confirmarCartao(r.cartao)) {
+            confirmados++;
+            c.querySelector(".res").replaceChildren(aviso("ok", "Preenchido e confirmado (\"Concluir e continuar\")."));
+          } else {
+            c.querySelector(".res").replaceChildren(aviso("erro", "Preenchido, mas não consegui clicar em \"Concluir e continuar\": clique você."));
+          }
+        }
+        const comProblema = resultados.filter(({ r }) => !r.ok).length;
+        anotar(`FIM: ${resultados.length} preenchido(s), ${confirmados} confirmado(s), ${comProblema} com problema. Parei antes do pagamento.`);
         const arquivo = baixarRegistro();
         diario = null;
         todos.disabled = false;
@@ -434,8 +461,9 @@
         registro.className = "nota";
         registro.textContent = `Registro salvo em Downloads: ${arquivo}. Se algo deu errado, mande esse arquivo (não tem dados pessoais).`;
         todos.after(registro);
-        todos.textContent = feitos === caixas.length ? `Pronto: ${feitos} viajante(s) confirmados. Confira e vá para o pagamento você.`
-          : `Parei no passageiro ${feitos + 1}: veja o aviso vermelho dele.`;
+        todos.textContent = comProblema
+          ? `Preenchi todos; ${confirmados} confirmado(s). ${comProblema} com aviso vermelho: confira e confirme você.`
+          : `Pronto: ${confirmados} viajante(s) preenchidos e confirmados. Confira e vá para o pagamento você.`;
       };
       const origem = document.createElement("p");
       origem.className = "nota";
