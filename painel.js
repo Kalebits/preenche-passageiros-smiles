@@ -50,6 +50,12 @@
   function pedacos(parte) {
     const achados = [];
     let resto = parte
+      // "válido até 22/10/2030", "validade: ...", "vencimento ...": validade do passaporte, NUNCA o nascimento.
+      .replace(/(?:v[aá]lid[oa]s?|validade|vencimento|vence|venc\.?|expira\w*)\s*(?:at[eé]|em)?\s*[:=-]?\s*(\d{1,2}[/.-]\d{1,2}[/.-]\d{4})/gi,
+        (m, d) => { achados.push("VALIDADE:" + d); return " "; })
+      // "Passaporte GB998846", "Passaporte nº FS647790": o número depois da palavra.
+      .replace(/(?:passaporte|passport)\.?\s*(?:n[ºo°.]*)?\s*[:=-]?\s*([A-Za-z]{1,3}\s?\d{5,9})(?![\dA-Za-z])/gi,
+        (m, n) => { achados.push("PASSAPORTE:" + n.replace(/\s/g, "").toUpperCase()); return " "; })
       .replace(/(?<!\d)\d{1,2}[/.-]\d{1,2}[/.-]\d{4}(?!\d)/g, (m) => { achados.push(m); return " "; })
       .replace(/(?<!\d)\d{3}[.\s]?\d{3}[.\s]?\d{3}[-\s]?\d{2}(?!\d)/g, (m) => { achados.push(m.replace(/\D/g, "")); return " "; });
     if (achados.length) resto = resto.replace(/\b(data de nascimento|nascimento|nasc|cpf|documento|doc)\b\.?\s*[:=-]?/gi, " ");
@@ -62,15 +68,18 @@
     // Cada linha com nome + documento é um passageiro; senão os blocos separados por linha em branco são.
     const ehContato = (l) => /@/.test(l) || (/^\D*(\d\D*){10,13}$/.test(l) && !/[A-Za-zÀ-ÿ]{4}/.test(l.replace(/^\s*[A-Za-zÀ-ÿ-]+\s*[:=-]?/, "")) && !/\d{1,2}[/.-]\d{1,2}[/.-]\d{4}/.test(l));
     const pessoas = linhas.filter(Boolean).filter((l) => !ehContato(l));
-    const porLinha = pessoas.length > 0 && pessoas.every((l) => /[A-Za-zÀ-ÿ]/.test(l) && /\d{11}|\d{3}\.\d{3}\.\d{3}-\d{2}/.test(l));
+    const porLinha = pessoas.length > 0 && pessoas.every((l) => /[A-Za-zÀ-ÿ]/.test(l) &&
+      /\d{11}|\d{3}\.\d{3}\.\d{3}-\d{2}|\d{1,2}[/.-]\d{1,2}[/.-]\d{4}|\b[A-Za-z]{1,3}\s?\d{5,9}\b/.test(l)); // nome + CPF, data ou passaporte
     const blocos = porLinha ? linhas.filter(Boolean) : texto.trim().split(/\n\s*\n/);
     const contato = {};
     const lista = blocos.map((bloco) => {
       const p = {};
-      for (const parte of bloco.split(/[\n,;]+/).flatMap(pedacos).map((x) => x.replace(/^\s*[A-Za-zÀ-ÿ ]{2,20}\s*[:=-]\s*/, (m) => /cpf|nasc|tel|cel|fone|e-?mail|passaporte|nome/i.test(m) ? "" : m).trim()).filter(Boolean)) {
+      for (const parte of bloco.split(/[\n,;]+/).flatMap(pedacos).map((x) => /^(VALIDADE|PASSAPORTE):/.test(x) ? x : x.replace(/^\s*[A-Za-zÀ-ÿ ]{2,20}\s*[:=-]\s*/, (m) => /cpf|nasc|tel|cel|fone|e-?mail|passaporte|nome/i.test(m) ? "" : m).trim()).filter(Boolean)) {
+        if (parte.startsWith("VALIDADE:")) { p.passaporte_validade = ((x) => x.replace(/[.-]/g, "/").replace(/^(\d)\//, "0$1/").replace(/\/(\d)\//, "/0$1/"))(parte.slice(9)); continue; }
+        if (parte.startsWith("PASSAPORTE:")) { p.passaporte = parte.slice(11); continue; }
         const dig = parte.replace(/\D/g, "");
         if (/@/.test(parte)) p.email = parte.match(/[\w.+-]+@[\w-]+(\.[\w-]+)+/)?.[0] || "";
-        else if (/^\d{1,2}[/.-]\d{1,2}[/.-]\d{4}$/.test(parte)) p.nascimento = parte.replace(/[.-]/g, "/").replace(/^(\d)\//, "0$1/").replace(/\/(\d)\//, "/0$1/");
+        else if (/^\d{1,2}[/.-]\d{1,2}[/.-]\d{4}$/.test(parte)) p.nascimento ||= parte.replace(/[.-]/g, "/").replace(/^(\d)\//, "0$1/").replace(/\/(\d)\//, "/0$1/");
         else if (!/[A-Za-zÀ-ÿ]/.test(parte) && dig.length === 11 && !p.cpf) p.cpf = dig;
         else if (!/[A-Za-zÀ-ÿ]/.test(parte) && dig.length >= 10 && dig.length <= 13) p.telefone = dig;
         else if (/^[A-Za-z]{1,3}\d{5,8}$/.test(parte.replace(/\s/g, ""))) p.passaporte = parte.replace(/\s/g, "").toUpperCase();
