@@ -38,7 +38,7 @@ Ela segue as mesmas regras que a equipe segue à mão:
 |---|---|
 | Documento, voo nacional | Tipo **"Outro Documento Oficial"**, com o **CPF** como número. RG nunca é usado |
 | Documento, voo internacional | **Passaporte obrigatório**: número, vencimento e país emissor. Passaporte vencido para tudo. A extensão percebe sozinha que a tela é internacional |
-| Nome | "Nome" leva o primeiro nome e os do meio; "Último sobrenome", só o último. Sem acentos |
+| Nome | Separados ("Nome: Jose Antonio" / "Sobrenome: Corral Ponce", ou editados no cartão): vão como você informou. Nome corrido: "Nome" leva o primeiro e os do meio, "Último sobrenome" só o último. Sem acentos |
 | Gênero | Do documento. Se o documento não diz, pelo primeiro nome, com aviso para conferir. Nome que serve para os dois fica para você escolher |
 | E-mail e telefone | Obrigatórios. Um só informado vale para todos |
 | Adulto, criança, bebê | A idade tem que bater com o lugar ("Pessoa adulta", "Bebê até 23 meses"); se não bater, ela recusa |

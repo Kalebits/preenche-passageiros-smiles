@@ -32,6 +32,9 @@
   }
   // Smiles: "Nome" = nomes + nomes do meio; "Último sobrenome" = só a última palavra do sobrenome.
   function dividirNome(p) {
+    // Nome e sobrenome informados separados ("Nome: Jose Antonio" / "Sobrenome: Corral Ponce", ou editado no
+    // cartão): vão como vieram. Nome corrido: só a última palavra é o "Último sobrenome".
+    if (p.sobrenome_informado && p.nome && p.sobrenome) return { nome: semAcento(p.nome), ultimo: semAcento(p.sobrenome) };
     const partes = `${p.nome} ${p.sobrenome}`.trim().split(/\s+/);
     const ultimo = partes.length > 1 ? partes.pop() : "";
     return { nome: semAcento(partes.join(" ")), ultimo: semAcento(ultimo) };
@@ -74,9 +77,13 @@
     const contato = {};
     const lista = blocos.map((bloco) => {
       const p = {};
-      for (const parte of bloco.split(/[\n,;]+/).flatMap(pedacos).map((x) => /^(VALIDADE|PASSAPORTE):/.test(x) ? x : x.replace(/^\s*[A-Za-zÀ-ÿ ]{2,20}\s*[:=-]\s*/, (m) => /cpf|nasc|tel|cel|fone|e-?mail|passaporte|nome/i.test(m) ? "" : m).trim()).filter(Boolean)) {
+      for (const parte of bloco.split(/[\n,;]+/).flatMap(pedacos).map((x) => x.replace(/^\s*sobrenomes?\s*[:=-]\s*(.+)$/i, "SOBRENOME:$1")
+        .replace(/^\s*(?:primeiros?\s+)?nomes?(?:\s+completo)?\s*[:=-]\s*(.+)$/i, "NOME:$1"))
+        .map((x) => /^(VALIDADE|PASSAPORTE|SOBRENOME|NOME):/.test(x) ? x : x.replace(/^\s*[A-Za-zÀ-ÿ ]{2,20}\s*[:=-]\s*/, (m) => /cpf|nasc|tel|cel|fone|e-?mail|passaporte|nome/i.test(m) ? "" : m).trim()).filter(Boolean)) {
         if (parte.startsWith("VALIDADE:")) { p.passaporte_validade = ((x) => x.replace(/[.-]/g, "/").replace(/^(\d)\//, "0$1/").replace(/\/(\d)\//, "/0$1/"))(parte.slice(9)); continue; }
         if (parte.startsWith("PASSAPORTE:")) { p.passaporte = parte.slice(11); continue; }
+        if (parte.startsWith("SOBRENOME:")) { p.sobrenome = parte.slice(10).trim(); p.sobrenome_informado = true; continue; }
+        if (parte.startsWith("NOME:") && !p.nome) { p.nome = parte.slice(5).trim(); p.nome_rotulado = true; continue; }
         const dig = parte.replace(/\D/g, "");
         if (/@/.test(parte)) p.email = parte.match(/[\w.+-]+@[\w-]+(\.[\w-]+)+/)?.[0] || "";
         else if (/^\d{1,2}[/.-]\d{1,2}[/.-]\d{4}$/.test(parte)) p.nascimento ||= parte.replace(/[.-]/g, "/").replace(/^(\d)\//, "0$1/").replace(/\/(\d)\//, "/0$1/");
@@ -96,6 +103,10 @@
     const emails = [...new Set(lista.map((p) => p.email).filter(Boolean).concat(contato.email || []))];
     const fones = [...new Set(lista.map((p) => p.telefone).filter(Boolean).concat(contato.telefone || []))];
     return lista.map((p) => {
+      if (!p.sobrenome && p.nome_rotulado) {  // "Nome: Maria Silva Santos" sem "Sobrenome:": nome corrido
+        const [nome, ...resto] = p.nome.split(/\s+/);
+        Object.assign(p, { nome, sobrenome: resto.join(" ") });
+      }
       const sexo = sexoPeloNome(p.nome);
       return { cpf: "", passaporte: "", passaporte_validade: "", passaporte_pais: "", ...p, sexo, sexo_origem: sexo ? "nome" : "",
         email: p.email || (emails.length === 1 ? emails[0] : ""), telefone: p.telefone || (fones.length === 1 ? fones[0] : "") };
@@ -351,6 +362,7 @@
   function cartaoPax(p, i, lugar) {
     const caixa = document.createElement("div");
     caixa.className = "pax";
+    caixa.dataset.sobrenomeInformado = p.sobrenome_informado ? "1" : "";
     const genero = !p.sexo ? `<div class="erro">Gênero desconhecido: não deu para saber pelo nome. Escreva Masculino ou Feminino.</div>`
       : p.sexo_origem === "nome" ? `<div class="atencao">Gênero deduzido pelo nome (${p.sexo}): confira.</div>` : "";
     caixa.innerHTML = `<h3>Passageiro ${i + 1}</h3>${genero}<div class="grade"></div>
@@ -360,6 +372,7 @@
       const l = document.createElement("label");
       const inp = document.createElement("input");
       inp.value = p[k] || ""; inp.dataset.k = k;
+      if (k === "sobrenome") inp.addEventListener("input", () => { caixa.dataset.sobrenomeInformado = "1"; });
       l.append(rotulo, inp);
       caixa.querySelector(".grade").append(l);
     }
@@ -372,6 +385,7 @@
     // opcoes.cartoes: lista guardada no começo do "Preencher todos"; opcoes.confirmar: false = só preenche.
     caixa.executar = async ({ cartoes: guardados = cartoes(), confirmar = true } = {}) => {
       const dados = Object.fromEntries([...caixa.querySelectorAll("input")].map((x) => [x.dataset.k, x.value.trim()]));
+      dados.sobrenome_informado = caixa.dataset.sobrenomeInformado === "1";
       dados.sexo_origem = dados.sexo === (p.sexo || "") ? p.sexo_origem : "digitado"; // de onde veio o gênero (para o registro)
       // Um único e-mail (ou celular) entre todos os passageiros vale para quem veio sem.
       for (const k of ["email", "telefone"]) {
